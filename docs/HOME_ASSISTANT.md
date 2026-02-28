@@ -18,17 +18,19 @@ rest:
     scan_interval: 60
     sensor:
       - name: "UniFi Gateway CPU"
-        value_template: "{{ value_json.cpu_usage | default(0) }}"
+        value_template: "{{ value_json.cpu_utilization | default(0) | round(1) }}"
         unit_of_measurement: "%"
         icon: mdi:cpu-64-bit
 
       - name: "UniFi Gateway RAM"
-        value_template: "{{ value_json.mem_usage | default(0) }}"
+        value_template: "{{ value_json.mem_utilization | default(0) | round(1) }}"
         unit_of_measurement: "%"
         icon: mdi:memory
 
       - name: "UniFi Gateway Uptime"
-        value_template: "{{ value_json.uptime_formatted | default('unknown') }}"
+        value_template: >-
+          {% set u = value_json.uptime | default(0) | int %}
+          {{ '%dd %dh %dm' | format(u // 86400, (u % 86400) // 3600, (u % 3600) // 60) }}
         icon: mdi:clock-check
 
       - name: "UniFi WAN Status"
@@ -47,7 +49,7 @@ rest:
     scan_interval: 120
     sensor:
       - name: "UniFi Total Clients"
-        value_template: "{{ value_json.total_clients | default(0) }}"
+        value_template: "{{ value_json.clients | default(0) }}"
         icon: mdi:devices
 
       - name: "UniFi Wireless Clients"
@@ -59,8 +61,12 @@ rest:
         icon: mdi:ethernet
 
       - name: "UniFi Access Points"
-        value_template: "{{ value_json.ap_count | default(0) }}"
+        value_template: "{{ value_json.aps | default(0) }}"
         icon: mdi:access-point
+
+      - name: "UniFi Switches"
+        value_template: "{{ value_json.switches | default(0) }}"
+        icon: mdi:switch
 ```
 
 ### Current Throughput
@@ -114,13 +120,15 @@ rest:
             none
           {% endif %}
         icon: mdi:account-alert
-        attributes:
-          count: >
-            {% if value_json.top_attackers | default([]) | length > 0 %}
-              {{ value_json.top_attackers[0].count }}
-            {% else %}
-              0
-            {% endif %}
+
+      - name: "UniFi Top Attacker Count"
+        value_template: >
+          {% if value_json.top_attackers | default([]) | length > 0 %}
+            {{ value_json.top_attackers[0].count }}
+          {% else %}
+            0
+          {% endif %}
+        icon: mdi:counter
 ```
 
 ### Recent Events (latest 5)
@@ -137,19 +145,24 @@ rest:
             none
           {% endif %}
         icon: mdi:alert-circle
-        attributes:
-          source_ip: >
-            {% if value_json.events | default([]) | length > 0 %}
-              {{ value_json.events[0].src_ip | default('') }}
-            {% endif %}
-          severity: >
-            {% if value_json.events | default([]) | length > 0 %}
-              {{ value_json.events[0].severity | default('') }}
-            {% endif %}
-          timestamp: >
-            {% if value_json.events | default([]) | length > 0 %}
-              {{ value_json.events[0].timestamp | default('') }}
-            {% endif %}
+
+      - name: "UniFi Latest Threat Source"
+        value_template: >
+          {% if value_json.events | default([]) | length > 0 %}
+            {{ value_json.events[0].src_ip | default('unknown') }}
+          {% else %}
+            none
+          {% endif %}
+        icon: mdi:ip-network
+
+      - name: "UniFi Latest Threat Severity"
+        value_template: >
+          {% if value_json.events | default([]) | length > 0 %}
+            {{ value_json.events[0].severity | default(0) }}
+          {% else %}
+            0
+          {% endif %}
+        icon: mdi:alert
 ```
 
 ---
@@ -188,11 +201,19 @@ To track a specific person/device, first find the device ID from the WiFi Stalke
             away
           {% endif %}
         icon: mdi:cellphone
-        attributes:
-          last_seen: "{{ value_json.last_seen | default('unknown') }}"
-          current_ap: "{{ value_json.current_ap_name | default('unknown') }}"
-          signal: "{{ value_json.current_signal | default('') }}"
-          ssid: "{{ value_json.current_ssid | default('') }}"
+
+      - name: "Matt Phone AP"
+        value_template: "{{ value_json.current_ap_name | default('unknown') }}"
+        icon: mdi:access-point
+
+      - name: "Matt Phone Signal"
+        value_template: "{{ value_json.current_signal_strength | default(0) }}"
+        unit_of_measurement: "dBm"
+        icon: mdi:signal
+
+      - name: "Matt Phone Last Seen"
+        value_template: "{{ value_json.last_seen | default('unknown') }}"
+        icon: mdi:clock-outline
 ```
 
 > **Tip:** You can use this as a `device_tracker`-like entity for automations
@@ -246,9 +267,12 @@ entities:
   - entity: sensor.unifi_gateway_ram
   - entity: sensor.unifi_wan_status
   - entity: sensor.unifi_total_clients
+  - entity: sensor.unifi_access_points
+  - entity: sensor.unifi_switches
   - entity: sensor.unifi_download_rate
   - entity: sensor.unifi_upload_rate
   - entity: sensor.unifi_threats_24h
+  - entity: sensor.unifi_threats_blocked
   - entity: sensor.unifi_tracked_devices_online
 ```
 
